@@ -4,19 +4,14 @@ import tkinter as tk
 from tkinter import messagebox
 
 
+# -------------- Read file ----------------
+
 def ReadSignalFile(file_name):
-    """
-    Reads signal data from the specified file. Assumes the file format includes
-    lines of index and value pairs, with the first two lines containing metadata
-    to be ignored.
-    """
     expected_indices = []
     expected_samples = []
-
     with open(file_name, 'r') as f:
-        for _ in range(4):  # Skip first 4 lines (metadata)
+        for _ in range(3):  # Skip first 3 lines (metadata)
             f.readline()
-
         # Read the signal data
         line = f.readline()
         while line:
@@ -27,14 +22,55 @@ def ReadSignalFile(file_name):
                 expected_indices.append(V1)
                 expected_samples.append(V2)
             line = f.readline()
-
     return expected_indices, expected_samples
 
 
+# -------------- Testing ---------------
+
+def Test(file_name, Your_indices, Your_samples):
+    expectedIndices, expectedValues = ReadSignalFile(file_name)
+    if ((len(Your_indices) != len(expectedIndices)) or (len(Your_samples) != len(expectedValues))):
+        print("Test case failed, your signal have different length from the expected one")
+        return
+    for i in range(len(Your_indices)):
+        if (Your_indices[i] != expectedIndices[i]):
+            print("Test case failed, your signal have different indicies from the expected one")
+            return
+    for i in range(len(Your_samples)):
+        if abs(Your_samples[i] - expectedValues[i]) < 0.01:
+            continue
+        else:
+            print("Test case failed, your signal have different values from the expected one")
+            return
+    print("Test case passed successfully")
+
+
+# ------------ Validation ------------
+
+def writeOut(file_name, sig, start=0):
+    with open(file_name, 'w') as file:
+        file.write(f"0\n")
+        file.write(f"0\n")
+        file.write(f"{len(sig)}\n")
+
+        for index in range(start, len(sig) - abs(start)):
+            if isinstance(sig[index], int):  # Check if the element is an integer
+                file.write(f"{index} {int(sig[index + abs(start)])}\n")
+            else:  # Otherwise, treat it as a float
+                file.write(f"{index} {round(float(sig[index + abs(start)]), 3)}\n")
+
+
+def validate_moving_avg(size):
+    indices, samples = ReadSignalFile('avg_output.txt')
+    if size == 3:
+        Test('MovingAvg_out1.txt', indices, samples)
+    elif size == 5:
+        Test('MovingAvg_out2.txt', indices, samples)
+
+
+# ------------ FUNCTIONS ----------
+
 def moving_average(signal, window_size):
-    """
-    Computes the moving average of a given signal with a specified window size.
-    """
     n = len(signal)
     averages = []
 
@@ -44,16 +80,16 @@ def moving_average(signal, window_size):
         avg = sum(window) / window_size
         averages.append(avg)
 
+    writeOut('avg_output.txt', averages)
+    validate_moving_avg(window_size)
     return averages
 
 
 def compare_signals(original, computed, window_size):
-    """
-    Plots the original signal and computed moving average for comparison.
-    """
     plt.figure(figsize=(10, 5))
     plt.plot(range(len(original)), original, label='Original Signal', marker='o', color='blue')
-    plt.plot(range(len(computed)), computed, label=f'Moving Average (Window Size {window_size})', marker='x', color='red')
+    plt.plot(range(len(computed)), computed, label=f'Moving Average (Window Size {window_size})', marker='x',
+             color='red')
     plt.xlabel('Sample Index')
     plt.ylabel('Signal Value')
     plt.title(f'Comparison of Original Signal and Moving Average (Window Size {window_size})')
@@ -68,21 +104,27 @@ def sharpening(signal):
 
     # First derivative: Y(n) = x(n) - x(n-1)
     first_derivative = x[1:] - x[:-1]
-    first_derivative = np.append(first_derivative, 0)  # Padding with zero for consistency
+    # first_derivative = np.append(first_derivative, 0)  # Padding with zero for consistency
 
     # Second derivative: Y(n) = x(n+1) - 2x(n) + x(n-1)
     second_derivative = x[2:] - 2 * x[1:-1] + x[:-2]
-    second_derivative = np.append(second_derivative, 0)  # Padding with zero for consistency
+    # second_derivative = np.append(second_derivative, 0)  # Padding with zero for consistency
+
+    writeOut('d1Out.txt', first_derivative)
+    writeOut('d2Out.txt', second_derivative)
+    indices1, samples1 = ReadSignalFile('d1Out.txt')
+    Test('1st_derivative_out.txt', indices1, samples1)
+    indices2, samples2 = ReadSignalFile('d2Out.txt')
+    Test('2nd_derivative_out.txt', indices2, samples2)
 
     return first_derivative, second_derivative
 
 
 def compare_results(calculated, expected, tolerance=1e-5):
-    """Compares two arrays within a tolerance. Returns True if they match, else False."""
     return np.allclose(calculated, expected, atol=tolerance)
 
 
-def convolution(signal1, signal2):
+def convolution(signal1, signal2, start):
     length = len(signal1) + len(signal2) - 1
     new_signal = []
     for k in range(length):
@@ -97,7 +139,11 @@ def convolution(signal1, signal2):
                 if k - x >= len(signal1): continue
                 sum += signal2[x] * signal1[k - x]
 
-        new_signal.append(sum)
+        new_signal.append(int(sum))
+
+    writeOut('convOut.txt', new_signal, start)
+    indices, samples = ReadSignalFile('convOut.txt')
+    Test('Conv_output.txt', indices, samples)
 
     return new_signal
 
@@ -136,9 +182,10 @@ def on_calculate_sharpening():
 
 def on_calculate_convolution():
     try:
-        _, signal1 = ReadSignalFile('Signal 1.txt')
-        _, signal2 = ReadSignalFile('Signal 2.txt')
-        convolved_signal = convolution(signal1, signal2)
+        ind1, signal1 = ReadSignalFile('Signal 1.txt')
+        ind2, signal2 = ReadSignalFile('Signal 2.txt')
+        start = int(min(ind1) + min(ind2))
+        convolved_signal = convolution(signal1, signal2, start)
         print("Convolved Signal:", convolved_signal)
         # Here you can also compare the convolution result with expected output
 
